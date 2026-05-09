@@ -62,7 +62,6 @@ CacheEntry {
 }
 ```
 
-
 Hard TTL = how long Redis keeps the key. Soft TTL = when refresh kicks in.
 
 ---
@@ -79,36 +78,11 @@ TTL is not a magic number. It's a function of three things:
 
 For SWR specifically: **soft TTL** controls staleness window;
 **hard TTL** is just a long safety net (typically soft + small buffer).
-The buffer should fit one refresh round-trip plus jitter.
+The buffer should fit one refresh round-trip.
 
 If TTL choice cannot satisfy all three, the cache strategy is wrong for
 the workload — pre-warming or a different pattern is needed, not a
 different number.
-
----
-
-## Jitter — Position Determines Purpose
-
-| Where | Effect | Limitation |
-|-------|--------|------------|
-| At `softExpireAt` write | Spreads next expiry across requests; effect compounds across refreshes | Useless for the moment of expiry itself |
-| At each check (add to current time) | Concurrent requests independently roll the dice; only a few trigger refresh | Duplicate triggers possible (but rare) |
-
-Jitter at check time is mathematically equivalent to PER — each request
-makes an independent probabilistic decision.
-
----
-
-## lockKey vs. Jitter — Don't Stack Them
-
-In a soft-TTL + background-refresh design, neither lockKey nor jitter
-makes the user wait on the DB (the refresh is asynchronous either way).
-
-- **lockKey:** exactly one refresh, guaranteed.
-- **Jitter:** probabilistically few refreshes, not guaranteed.
-
-Pick one. lockKey is simpler and more deterministic — usually the right
-choice.
 
 ---
 
@@ -179,19 +153,12 @@ note.
 
 ---
 
-## Stampede vs. Thundering Herd
+## Related: Thundering Herd
 
-Related but not identical.
-
-- **Cache stampede:** miss-driven. Many requests hit the origin because
-  the cache layer failed to absorb them.
-- **Thundering herd:** wakeup-driven. Many waiting clients are released
-  simultaneously (e.g., a server recovers, all retry clients fire at
-  once).
-
-Backoff + jitter is the thundering-herd remedy. Lock / SWR / PER are the
-stampede remedies. They share the symptom (origin overload from
-synchronized requests) but require different defenses.
+Stampede is miss-driven (cache fails to absorb concurrent requests).
+**Thundering herd** is wakeup-driven (many waiting clients released
+simultaneously — server recovery, lock release, retry timer expiry).
+Same symptom shape, different cause and remedy. See the [thundering herd note](./thundering-herd.md).
 
 ---
 
